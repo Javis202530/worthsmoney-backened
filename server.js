@@ -1,39 +1,15 @@
 const express = require("express");
+const fs = require("fs");
+const bcrypt = require("bcrypt");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
-const fs = require("fs");
+require("dotenv").config();
 
 const app = express();
 app.use(express.json());
-app.use(express.static("public"));
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
+app.use(express.urlencoded({ extended: true }));
 
-// SIGNUP
-app.post("/api/signup", async (req, res) => {
-  const { email, password } = req.body;
-
-  const hashed = await bcrypt.hash(password, 10);
-  users.push({ email, password: hashed });
-
-  res.json({ message: "Signup successful" });
-});
-
-// LOGIN
-app.post("/api/login", async (req, res) => {
-  const { email, password } = req.body;
-  const user = users.find(u => u.email === email);
-
-  if (!user) return res.status(400).json({ message: "User not found" });
-
-  const valid = await bcrypt.compare(password, user.password);
-  if (!valid) return res.status(401).json({ message: "Wrong password" });
-
-  const token = jwt.sign({ email }, "secret123", { expiresIn: "1h" });
-  res.json({ token });
-});
-
-
+// Load users
 let users = fs.existsSync("users.json")
   ? JSON.parse(fs.readFileSync("users.json"))
   : [];
@@ -42,78 +18,89 @@ let users = fs.existsSync("users.json")
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
-    user: "YOUR_EMAIL@gmail.com",
-    pass: "APP_PASSWORD"
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
   }
 });
 
-// SIGNUP
-app.post("/signup", (req, res) => {
+// REGISTER
+app.post("/register", async (req, res) => {
   const { email, password } = req.body;
 
   if (users.find(u => u.email === email))
-    return res.status(400).send("Email already exists");
+    return res.status(400).json({ message: "User already exists" });
 
+  const hashedPassword = await bcrypt.hash(password, 10);
   const token = crypto.randomBytes(32).toString("hex");
 
-  users.push({ email, password, verified: false, token });
+  const user = {
+    email,
+    password: hashedPassword,
+    verified: false,
+    token
+  };
+
+  users.push(user);
   fs.writeFileSync("users.json", JSON.stringify(users, null, 2));
 
-  const link = `http://localhost:3000/verify/${token}`;
+  const verifyLink = `http://localhost:3000/verify/${token}`;
 
-  transporter.sendMail({
+  await transporter.sendMail({
+    from: process.env.EMAIL_USER,
     to: email,
     subject: "Verify your account",
-    html: `<h3>Verify Account</h3><a href="${link}">Click here</a>`
+    html: `<h3>Verify Email</h3><a href="${verifyLink}">Click to verify</a>`
   });
 
-  res.send("Verification email sent");
+  res.json({ message: "Verification email sent" });
 });
 
 // VERIFY EMAIL
 app.get("/verify/:token", (req, res) => {
   const user = users.find(u => u.token === req.params.token);
-  if (!user) return res.send("Invalid link");
+  if (!user) return res.send("Invalid or expired link");
 
   user.verified = true;
   user.token = null;
-  fs.writeFileSync("users.json", JSON.stringify(users, null, 2));
 
-  res.send("Email verified! You can now login.");
+  fs.writeFileSync("users.json", JSON.stringify(users, null, 2));
+  res.send("Email verified successfully!");
 });
 
 // LOGIN
-app.post("/login", (req, res) => {
+app.post("/login", async (req, res) => {
   const { email, password } = req.body;
-  const user = users.find(u => u.email === email && u.password === password);
+  const user = users.find(u => u.email === email);
 
-  if (!user) return res.status(401).send("Invalid credentials");
-  if (!user.verified) return res.status(403).send("Verify your email first");
+  if (!user) return res.status(400).json({ message: "User not found" });
+  if (!user.verified) return res.status(403).json({ message: "Verify email first" });
 
-  res.send("Login successful");
+  const valid = await bcrypt.compare(password, user.password);
+  if (!valid) return res.status(401).json({ message: "Wrong password" });
+
+  res.json({ message: "Login successful" });
+});
+
+// TEST ROUTE
+app.get("/", (req, res) => {
+  res.send("Server running successfully 🚀");
 });
 app.get("/test-email", async (req, res) => {
   try {
     await transporter.sendMail({
       from: process.env.EMAIL_USER,
       to: process.env.EMAIL_USER,
-      subject: "Test Email Successful",
-      html: "<h2>Your email system is working!</h2>"
+      subject: "Test Email",
+      html: "<h2>Email system is working!</h2>"
     });
 
-    res.send("✅ Email sent successfully!");
-  } catch (err) {
-    console.error(err);
+    res.send("✅ Email sent successfully");
+  } catch (error) {
+    console.error(error);
     res.status(500).send("❌ Email failed");
   }
 });
-app.get("/", (req, res) => {
-  res.send("Server is running successfully 🚀");
-});
-app.get("/api/test", (req, res) => {
-  res.json({ message: "API working successfully" });
-});
-// Test API route
-app.listen(3000, () => console.log("Server running on http://localhost:3000"));
 
 
+const PORT = 3000;
+app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
