@@ -101,6 +101,10 @@ app.get("/test-email", async (req, res) => {
   }
 });
 
-module.exports = app;
+mapp.listen(3000, () => {
+  console.log("Server running on http://localhost:3000");
+});
+
+
 
 
