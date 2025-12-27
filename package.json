@@ -1,9 +1,12 @@
 {
+  "name": "worthsmoney-backend",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
   "dependencies": {
-    "bcryptjs": "^3.0.3",
-    "cors": "^2.8.5",
-    "express": "^5.2.1",
-    "jsonwebtoken": "^9.0.3",
-    "nodemailer": "^7.0.12"
+    "bcryptjs": "^2.4.3",
+    "express": "^4.19.2"
   }
 }
